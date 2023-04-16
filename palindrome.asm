@@ -50,7 +50,7 @@ _start:
         je _exit
 
         ; Store length of the input string into inputLength
-        mov [inputLength], BYTE eax
+        mov [inputLength], DWORD eax
 
         ; String locations
         mov esi, inputString
