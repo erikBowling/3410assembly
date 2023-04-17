@@ -1,6 +1,6 @@
 ; Name: Erik Bowling
 ; Date: April 16, 2023
-; Palindrome.asm revision
+; palindrome.asm revision
 
 BITS 32
 
@@ -70,9 +70,12 @@ _start:
         ; Parameters for reverse string. Input string, revStr, and length of input string
         push inStr ; ebp + 16
         push revStr ; ebp + 12
-        push DWORD [lenInStr] ; ebp + 8
+        push eax ; ebp + 8
 
         call is_palindrome
+
+        ; Clean the stack
+        add esp, 12
 
         cmp eax, DWORD 1
         jne _fail
@@ -100,11 +103,6 @@ _start:
             mov edx, lenNewLine
             int 80h
 
-            ; Clears the stack. Not sure the best convention for this.
-            pop eax
-            pop eax
-            pop eax
-
         ; Jump back to the top
         jmp _main_loop
 
@@ -123,10 +121,10 @@ is_palindrome:
     push ebp ; Preserve location of ebp
     mov ebp, esp ; Make ebp point to top of the stack
 
-    sub esp, 8 ; Make space for esi, edi
-
-    mov [ebp - 4], esi
-    mov [ebp - 8], edi
+    ; Preserve our caller's registers
+    push esi
+    push edi
+    push ebx
 
     mov ecx, DWORD [ebp + 8] ; length of input
     mov edi, DWORD [ebp + 12] ; revStr Memory Address
@@ -145,17 +143,21 @@ is_palindrome:
         cmp ecx, DWORD 0
         jne _reverseLoop
 
+    ; Reset length for check loop
     mov ecx, DWORD [ebp + 8]
     xor edx, edx
+
 
     ; Check if each character in reverse string = input string
     _check_same_loop:
         dec ecx
+        xor eax, eax
+        xor ebx, ebx
 
-        mov ah, BYTE [edi+edx]
-        mov al, BYTE [esi+edx]
+        mov al, BYTE [edi+edx]
+        mov bl, BYTE [esi+edx]
 
-        cmp ah, al
+        cmp al, bl
         jne _not_pal
 
         inc edx
@@ -177,8 +179,9 @@ is_palindrome:
 
     _done:
         ; Restore edi and esi
-        mov esi, [ebp - 4]
-        mov edi, [ebp - 8]
+        pop ebx
+        pop edi
+        pop esi
 
         ; Remove local variables and reset ebp
         mov esp, ebp
