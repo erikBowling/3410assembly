@@ -36,8 +36,6 @@ SECTION .data
 
 SECTION .bss
     inStr RESB 1024
-    revStr RESB 1024
-    lenInStr RESD 1
 
 GLOBAL _start:
 
@@ -61,21 +59,18 @@ _start:
 
         ; If the string entered was empty, exit
         ; eax holds the length of STDIN + 1
+        ; Could also check it's value against 10 for a new line
         cmp eax, DWORD 1
         je _exit
-        
-        ; Store the length of the input str
-        mov [lenInStr], eax
 
         ; Parameters for reverse string. Input string, revStr, and length of input string
-        push inStr ; ebp + 16
-        push revStr ; ebp + 12
+        push inStr ; ebp + 12
         push eax ; ebp + 8
 
         call is_palindrome
 
         ; Clean the stack
-        add esp, 12
+        add esp, 8
 
         cmp eax, DWORD 1
         jne _fail
@@ -87,7 +82,7 @@ _start:
             mov edx, lenSuccess
             int 80h
 
-            jmp _clean_up
+            jmp _restart
 
         _fail:
             mov eax, SYS_WRITE
@@ -96,7 +91,8 @@ _start:
             mov edx, lenFailure
             int 80h
 
-        _clean_up:
+        _restart:
+            ; prints a new line
             mov eax, SYS_WRITE
             mov ebx, STD_OUT
             mov ecx, newLine
@@ -117,55 +113,40 @@ _start:
         mov ebx, 0
         int 80h
 
+        ; divide by two efficiently
+        ; shr eax, 1
+
 is_palindrome:
     push ebp ; Preserve location of ebp
     mov ebp, esp ; Make ebp point to top of the stack
 
-    ; Preserve our caller's registers
+    ; Preserve our caller's esi, ebx registers
     push esi
-    push edi
     push ebx
 
-    mov ecx, DWORD [ebp + 8] ; length of input
-    mov edi, DWORD [ebp + 12] ; revStr Memory Address
-    mov esi, DWORD [ebp + 16] ; inStr Memory Address
+    mov ecx, DWORD [ebp + 8] ; length of input (including new line)
+    mov ebx, DWORD [ebp + 8] ; used to find midpoint of string
+    mov esi, DWORD [ebp + 12] ; memory address of input string
 
     xor edx, edx ; edx will increment though edi
+    sub ecx, 2 ; remove newline and zero index it
+    dec ebx ; Also remove newline
 
-    ; Loops backwards through the input string appending each letter to revStr
-    _reverseLoop:
-        dec ecx 
-        mov ah, BYTE [esi + ecx]
-        mov BYTE [edi + edx], ah
+    shr ebx, 1 ; Easier divide by two.
 
-        inc edx
+    _checkLoop:
+        mov ah, BYTE [esi + ecx] ; storing characters starting from the end in ah
 
-        cmp ecx, DWORD 0
-        jne _reverseLoop
-
-    ; Reset length for check loop
-    mov ecx, DWORD [ebp + 8]
-    xor edx, edx
-
-
-    ; Check if each character in reverse string = input string
-    _check_same_loop:
-        dec ecx
-        xor eax, eax
-        xor ebx, ebx
-
-        mov al, BYTE [edi+edx]
-        mov bl, BYTE [esi+edx]
-
-        cmp al, bl
+        cmp ah, BYTE [esi + edx] ; compare ending character to beginning character
         jne _not_pal
 
+        cmp edx, ebx
+        jge _yes_pal
+
         inc edx
+        dec ecx
 
-        cmp ecx, DWORD 0
-        je _yes_pal
-
-        jmp _check_same_loop
+        jmp _checkLoop
 
     _not_pal:
         ; return 0 if not palindrome
@@ -178,9 +159,8 @@ is_palindrome:
         inc eax
 
     _done:
-        ; Restore edi and esi
+        ; Restore esi, and ebx
         pop ebx
-        pop edi
         pop esi
 
         ; Remove local variables and reset ebp

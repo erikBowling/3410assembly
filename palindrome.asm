@@ -1,3 +1,7 @@
+; Name: Erik Bowling
+; Date: April 16, 2023
+; palindrome.asm revision
+
 BITS 32
 
 SECTION .data
@@ -31,154 +35,136 @@ SECTION .data
     lenNewLine EQU $ - newLine
 
 SECTION .bss
-    inputString RESB 1024
-    reverseString RESB 1024
-    inputLength RESB 1
+    inStr RESB 1024
 
 GLOBAL _start:
 
 SECTION .text
 
 _start:
-    _mainLoop:
-        ; Prompts user and takes in string
-        call InitialPrompt
+    _main_loop:
+        ; Print prompt to user
+        mov eax, SYS_WRITE
+        mov ebx, STD_OUT
+        mov ecx, prompt
+        mov edx, lenPrompt
+        int 80h
+
+        ; Read in string from the user
+        mov eax, SYS_READ
+        mov ebx, STD_IN
+        mov ecx, inStr
+        mov edx, 1024
+        int 80h
 
         ; If the string entered was empty, exit
-        ; eax holds the length of STDIN input + 1 for the zero terminator
-        cmp eax, BYTE 1
+        ; eax holds the length of STDIN + 1
+        ; Could also check for the value of 10 in the input string for a new line
+        cmp eax, DWORD 1
         je _exit
 
-        ; Store length of the input string into inputLength
-        mov [inputLength], DWORD eax
+        ; Parameters for is_palindrome. Input string and length
+        push inStr ; ebp + 12
+        push eax ; ebp + 8
 
-        ; String locations
-        mov esi, inputString
-        mov edi, reverseString
-
-        ; ecx is used to decrement the loop, and grab the end of the input string
-        ; ebx will be the position for the beginning of reverse string
-        ; dec ecx to account for the zero terminator char in inputstring
-        mov ecx, eax
-        dec ecx
-        xor ebx, ebx
-
-        ; Loops through the input string and stores the reverse of it in reverseString
-        _reverseLoop:
-            dec ecx
-            mov ah, BYTE [esi + ecx]
-            mov BYTE [edi + ebx], ah
-            inc ebx
-            inc ecx
-        loop _reverseLoop
-        
-        ; Check if the input string is a palindrome
         call is_palindrome
-        
-        ; After the check for palindrome, if ecx == ebx then it is a palindrome.
-        cmp ecx, ebx
-        je _yes
-        jne _no
 
-        ; If ecx == ebx or if all characters match
-        _yes:
-            call printSuccess
-            jmp _mainLoop
+        ; Clean the stack
+        add esp, 8
 
-        ; If ecx != ebx or if not all characters match
-        _no:
-            call printFailure
-            jmp _mainLoop
+        cmp eax, DWORD 1
+        jne _fail
+
+        _succ:
+            mov eax, SYS_WRITE
+            mov ebx, STD_OUT
+            mov ecx, success
+            mov edx, lenSuccess
+            int 80h
+
+            jmp _restart
+
+        _fail:
+            mov eax, SYS_WRITE
+            mov ebx, STD_OUT
+            mov ecx, failure
+            mov edx, lenFailure
+            int 80h
+
+        _restart:
+            ; prints a new line
+            mov eax, SYS_WRITE
+            mov ebx, STD_OUT
+            mov ecx, newLine
+            mov edx, lenNewLine
+            int 80h
+
+        ; Jump back to the top
+        jmp _main_loop
 
     _exit:
-        ; Print goodbye
         mov eax, SYS_WRITE
         mov ebx, STD_OUT
         mov ecx, goodbye
         mov edx, lenGoodbye
         int 80h
 
-        ; Exit
         mov eax, SYS_EXIT
         mov ebx, 0
         int 80h
 
-; **** FUNCTIONS ****
-
-InitialPrompt:
-    ; Print prompt to user
-    mov eax, SYS_WRITE
-    mov ebx, STD_OUT
-    mov ecx, prompt
-    mov edx, lenPrompt
-    int 80h
-
-    ; Read in string from the user
-    mov eax, SYS_READ
-    mov ebx, STD_IN
-    mov ecx, inputString
-    mov edx, 1024
-    int 80h
-
-    ret
-
-printSuccess:
-    ; Print success message
-    mov eax, SYS_WRITE
-    mov ebx, STD_OUT
-    mov ecx, success
-    mov edx, lenSuccess
-    int 80h
-
-    ; Print new line
-    mov eax, SYS_WRITE
-    mov ebx, STD_OUT
-    mov ecx, newLine
-    mov edx, lenNewLine
-    int 80h
-
-    ret 
-
-printFailure:
-    ; Print failure message
-    mov eax, SYS_WRITE
-    mov ebx, STD_OUT
-    mov ecx, failure
-    mov edx, lenFailure
-    int 80h
-
-    ; Print new line
-    mov eax, SYS_WRITE
-    mov ebx, STD_OUT
-    mov ecx, newLine
-    mov edx, lenNewLine
-    int 80h
-
-    ret
+        ; divide by two efficiently
+        ; shr eax, 1
 
 is_palindrome:
-    ; Assumes input string is stored in esi and reverseString is stored in edi
-    ; Grab the length, put it in ebx, and zero out ecx
-    mov ebx, [inputLength]
-    dec ebx
-    xor ecx, ecx
+    push ebp ; Preserve location of ebp
+    mov ebp, esp ; Make ebp point to top of the stack
 
-    ; Loop through the length of the input string
-    ; Compare reversed string and input string byte by byte
+    ; Preserve our caller's esi, ebx registers
+    push esi
+    push ebx
+
+    mov ecx, DWORD [ebp + 8] ; length of input (including new line)
+    mov ebx, DWORD [ebp + 8] ; used to find midpoint of string
+    mov esi, DWORD [ebp + 12] ; memory address of input string
+
+    xor edx, edx ; edx will increment though edi
+    sub ecx, 2 ; remove newline and zero index it
+    dec ebx ; Also remove newline
+
+    shr ebx, 1 ; Easier divide by two.
+
     _checkLoop:
-        ; If ecx made it through the whole string without finding a mismatched character, it's a palindrome
-        cmp ecx, ebx
-        je _exit_is_palindrome
+        mov ah, BYTE [esi + ecx] ; storing characters starting from the end in ah
 
-        mov ah, BYTE [esi + ecx]
-        mov al, BYTE [edi + ecx]
+        cmp ah, BYTE [esi + edx] ; compare ending character to beginning character
+        jne _not_pal
 
-        ; Print Failure message if character doesn't match
-        cmp ah, al
-        jne _exit_is_palindrome
+        cmp edx, ebx ; If edx exceeds ebx or is equal, then we have a palindrome
+        jge _yes_pal
 
-        inc ecx
+        inc edx
+        dec ecx
+
         jmp _checkLoop
 
-    _exit_is_palindrome:
-        ret
+    _not_pal:
+        ; return 0 if not palindrome
+        xor eax, eax
+        jmp _done
+
+    _yes_pal:
+        ; return 1 if palindrome
+        xor eax, eax
+        inc eax
+
+    _done:
+        ; Restore esi, and ebx
+        pop ebx
+        pop esi
+
+        ; Remove local variables and reset ebp
+        mov esp, ebp
+        pop ebp
+
+    ret
